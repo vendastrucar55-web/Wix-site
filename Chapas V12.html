@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Otimizador de Corte Turbo</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<style>
+:root { --primary: #2563eb; --bg: #f1f5f9; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); margin: 0; display: flex; flex-direction: row; }
+.chapa-inputs { display: grid; grid-template-columns: 1fr; gap: 6px; }
+.chapa-inputs input { height: 38px; padding: 6px; margin: 0; box-sizing: border-box; text-align: center; border: 1px solid #ccc; border-radius: 4px; }
+.sidebar { width: 350px; background: #fff; padding: 20px; border-right: 1px solid #e2e8f0; }
+input { width: 100%; padding: 10px; margin-bottom: 5px; }
+.item-row { display: grid; grid-template-columns: 1fr 1fr 1fr 40px; gap: 6px; margin-bottom: 6px; align-items: center; }
+.item-row input { height: 38px; padding: 6px; margin: 0; box-sizing: border-box; text-align: center; border: 1px solid #ccc; border-radius: 4px; }
+button { cursor: pointer; padding: 10px; border: none; border-radius: 6px; }
+.btn-run { background: var(--primary); color: #fff; width: 100%; margin-top: 10px; }
+.main-content { flex: 1; padding: 20px; overflow-y: auto; text-align: center; }
+#resultado { display: flex; flex-direction: column; align-items: center; }
+canvas { border: 1px solid #000; margin-bottom: 20px; max-width: 100%; }
+.stats { background: #1e293b; color: #fff; padding: 10px; margin-bottom: 10px; }
+@media (max-width: 768px) { body { flex-direction: column; } .sidebar { width: 100%; } }
+</style>
+</head>
+<body>
+<div class="sidebar">
+<h3>Chapa</h3>
+<div class="chapa-inputs">
+<input id="chapaW" value="3000">
+<input id="chapaH" value="1200">
+</div>
+<h3>Peças</h3>
+<div id="listaPecas">
+<div class="item-row">
+<input class="pw" value="1200">
+<input class="ph" value="350">
+<input class="pq" value="10">
+<button onclick="this.parentElement.remove()">X</button>
+</div>
+</div>
+<button onclick="addPecaInput()">+ Peça</button>
+<button class="btn-run" onclick="processar()">CALCULAR</button>
+<button class="btn-run" onclick="exportarPDF()">EXPORTAR PDF</button>
+</div>
+<div class="main-content">
+<div id="infoBar" class="stats">Pronto</div>
+<div id="resultado"></div>
+</div>
+
+<script>
+function addPecaInput(){
+    const d = document.createElement("div");
+    d.className = "item-row";
+    d.innerHTML = `<input class="pw"><input class="ph"><input class="pq"><button onclick="this.parentElement.remove()">X</button>`;
+    listaPecas.appendChild(d);
+}
+
+function corAleatoria(){ return `hsl(${Math.random()*360},70%,70%)`; }
+
+function Packer(w, h) {
+    this.root = { x: 0, y: 0, w, h };
+}
+
+Packer.prototype.findNode = function(root, w, h) {
+    if (!root) return null;
+    if (root.used) return this.findNode(root.right, w, h) || this.findNode(root.down, w, h);
+    if (w <= root.w && h <= root.h) return root;
+    return null;
+};
+
+Packer.prototype.splitNode = function(node, w, h) {
+    node.used = true;
+    node.down = { x: node.x, y: node.y + h, w: node.w, h: node.h - h };
+    node.right = { x: node.x + w, y: node.y, w: node.w - w, h: h };
+    return node;
+};
+
+Packer.prototype.growRight = function(w, h) {
+    this.root = {
+        used: true,
+        x: 0,
+        y: 0,
+        w: this.root.w + w,
+        h: this.root.h,
+        down: this.root,
+        right: { x: this.root.w, y: 0, w, h: this.root.h }
+    };
+    const node = this.findNode(this.root, w, h);
+    return node ? this.splitNode(node, w, h) : null;
+};
+
+Packer.prototype.growDown = function(w, h) {
+    this.root = {
+        used: true,
+        x: 0,
+        y: 0,
+        w: this.root.w,
+        h: this.root.h + h,
+        right: this.root,
+        down: { x: 0, y: this.root.h, w: this.root.w, h }
+    };
+    const node = this.findNode(this.root, w, h);
+    return node ? this.splitNode(node, w, h) : null;
+};
+
+Packer.prototype.growNode = function(w, h) {
+    const canGrowDown = (w <= this.root.w);
+    const canGrowRight = (h <= this.root.h);
+    const shouldGrowRight = canGrowRight && (this.root.h >= (this.root.w + w));
+    const shouldGrowDown = canGrowDown && (this.root.w >= (this.root.h + h));
+    if (shouldGrowRight) return this.growRight(w, h);
+    if (shouldGrowDown) return this.growDown(w, h);
+    if (canGrowRight) return this.growRight(w, h);
+    if (canGrowDown) return this.growDown(w, h);
+    return null;
+};
+
+Packer.prototype.fit = function(blocks) {
+    if (!blocks.length) return;
+    this.root = { x: 0, y: 0, w: blocks[0].w, h: blocks[0].h };
+    for (const block of blocks) {
+        let node = this.findNode(this.root, block.w, block.h);
+        if (node) block.fit = this.splitNode(node, block.w, block.h);
+        else block.fit = this.growNode(block.w, block.h);
+    }
+};
+
+function otimizarComPacker(binW, binH, pecas) {
+    const blocos = pecas.map((p, idx) => ({ ...p, idx, w: p.w, h: p.h }))
+        .sort((a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h));
+    const packer = new Packer(binW, binH);
+    packer.fit(blocos);
+    const alocadas = [];
+    const restantes = [];
+    for (const b of blocos) {
+        if (b.fit && b.fit.x + b.w <= binW && b.fit.y + b.h <= binH) alocadas.push({ x: b.fit.x, y: b.fit.y, w: b.w, h: b.h, cor: b.cor });
+        else restantes.push({ w: b.w, h: b.h, cor: b.cor });
+    }
+    return { alocadas, restantes };
+}
+
+function otimizarChapa(binW, binH, pecasDisponiveis, kerf) {
+    let freeRects = [{ x: 0, y: 0, w: binW, h: binH }];
+    const usedRects = [];
+    const restantes = [];
+
+    function scoreRect(free, w, h) {
+        const sobraW = free.w - w;
+        const sobraH = free.h - h;
+        if (sobraW < 0 || sobraH < 0) return null;
+        return { shortSide: Math.min(sobraW, sobraH), longSide: Math.max(sobraW, sobraH) };
+    }
+
+    function intersects(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    function splitFreeRect(free, used) {
+        const novos = [];
+        if (!intersects(free, used)) return [free];
+
+        if (used.y > free.y) novos.push({ x: free.x, y: free.y, w: free.w, h: used.y - free.y });
+
+        if (used.y + used.h < free.y + free.h) {
+            const novaY = used.y + used.h + kerf;
+            const novaH = (free.y + free.h) - novaY;
+            if (novaH > 0) novos.push({ x: free.x, y: novaY, w: free.w, h: novaH });
+        }
+
+        if (used.x > free.x) novos.push({ x: free.x, y: free.y, w: used.x - free.x, h: free.h });
+
+        if (used.x + used.w < free.x + free.w) {
+            const novaX = used.x + used.w + kerf;
+            const novaW = (free.x + free.w) - novaX;
+            if (novaW > 0) novos.push({ x: novaX, y: free.y, w: novaW, h: free.h });
+        }
+
+        return novos.filter(r => r.w > 0 && r.h > 0);
+    }
+
+    function limpar(lista) {
+        return lista.filter((a, i) => !lista.some((b, j) =>
+            i !== j &&
+            a.x >= b.x && a.y >= b.y &&
+            (a.x + a.w) <= (b.x + b.w) &&
+            (a.y + a.h) <= (b.y + b.h)
+        ));
+    }
+
+    function cabeSemSobrepor(rect) {
+        if (rect.x < 0 || rect.y < 0 || rect.x + rect.w > binW || rect.y + rect.h > binH) return false;
+        return !usedRects.some(u => intersects(u, rect));
+    }
+
+    for (const peca of pecasDisponiveis) {
+        let melhor = null;
+
+        for (let i = 0; i < freeRects.length; i++) {
+            const f = freeRects[i];
+            for (const conf of [{ w: peca.w, h: peca.h }, { w: peca.h, h: peca.w }]) {
+                const score = scoreRect(f, conf.w, conf.h);
+                if (!score) continue;
+
+                const candidato = { x: f.x, y: f.y, w: conf.w, h: conf.h };
+                if (!cabeSemSobrepor(candidato)) continue;
+
+                if (!melhor ||
+                    score.shortSide < melhor.score.shortSide ||
+                    (score.shortSide === melhor.score.shortSide && score.longSide < melhor.score.longSide)) {
+                    melhor = { i, rect: f, conf, score };
+                }
+            }
+        }
+
+        if (!melhor) {
+            restantes.push(peca);
+            continue;
+        }
+
+        const usado = { x: melhor.rect.x, y: melhor.rect.y, w: melhor.conf.w, h: melhor.conf.h, cor: peca.cor };
+        if (!cabeSemSobrepor(usado)) {
+            restantes.push(peca);
+            continue;
+        }
+
+        usedRects.push(usado);
+
+        const novos = [];
+        for (const f of freeRects) {
+            novos.push(...splitFreeRect(f, usado));
+        }
+
+        freeRects = limpar(novos).filter(f => f.w > 5 && f.h > 5);
+    }
+
+    return { alocadas: usedRects, restantes };
+}
+
+function otimizarChapaMelhor(binW, binH, pecas, kerf) {
+    function otimizarGuilhotinaVertical(lista) {
+        const strips = [];
+        const alocadas = [];
+        const restantes = [];
+        let xAtual = 0;
+
+        for (const peca of lista) {
+            const opcoes = [{ w: peca.w, h: peca.h }, { w: peca.h, h: peca.w }];
+            let melhor = null;
+
+            for (const conf of opcoes) {
+                for (let i = 0; i < strips.length; i++) {
+                    const s = strips[i];
+                    if (s.w !== conf.w) continue;
+                    if (s.yAtual + conf.h <= binH) {
+                        melhor = { stripIndex: i, conf, novo: false };
+                        break;
+                    }
+                }
+                if (melhor) break;
+            }
+
+            if (!melhor) {
+                // prioriza peça "em pé" para manter cortes verticais longos
+                opcoes.sort((a, b) => (b.h - a.h) || (a.w - b.w));
+                for (const conf of opcoes) {
+                    if (xAtual + conf.w <= binW && conf.h <= binH) {
+                        strips.push({ x: xAtual, w: conf.w, yAtual: 0 });
+                        melhor = { stripIndex: strips.length - 1, conf, novo: true };
+                        xAtual += conf.w + kerf;
+                        break;
+                    }
+                }
+            }
+
+            if (!melhor) {
+                restantes.push(peca);
+                continue;
+            }
+
+            const s = strips[melhor.stripIndex];
+            alocadas.push({ x: s.x, y: s.yAtual, w: melhor.conf.w, h: melhor.conf.h, cor: peca.cor });
+            s.yAtual += melhor.conf.h + kerf;
+        }
+
+        return { alocadas, restantes };
+    }
+
+    const variantes = [
+        [...pecas].sort((a, b) => b.w * b.h - a.w * a.h),
+        [...pecas].sort((a, b) => (b.w + b.h) - (a.w + a.h)),
+        [...pecas].sort((a, b) => Math.min(a.w, a.h) - Math.min(b.w, b.h)),
+        [...pecas].sort((a, b) => (a.w * a.h) - (b.w * b.h))
+    ];
+
+    let melhor = null;
+    for (const ordem of variantes) {
+        for (const r of [otimizarGuilhotinaVertical(ordem), otimizarComPacker(binW, binH, ordem), otimizarChapa(binW, binH, ordem, kerf)]) {
+            const area = r.alocadas.reduce((s, p) => s + (p.w * p.h), 0);
+            const score = { qtd: r.alocadas.length, area };
+            if (!melhor ||
+                score.qtd > melhor.score.qtd ||
+                (score.qtd === melhor.score.qtd && score.area > melhor.score.area)) {
+                melhor = { ...r, score };
+            }
+        }
+    }
+    return melhor || { alocadas: [], restantes: pecas };
+}
+
+
+function processar(){
+    const W = +chapaW.value;
+    const H = +chapaH.value;
+    const kerf = 0;
+    const fila = [];
+
+    document.querySelectorAll(".item-row").forEach(r => {
+        const w = +r.querySelector(".pw").value;
+        const h = +r.querySelector(".ph").value;
+        const q = +r.querySelector(".pq").value;
+        const cor = corAleatoria();
+        for (let i = 0; i < q; i++) fila.push({ w, h, cor });
+    });
+
+    resultado.innerHTML = "";
+    let chapas = 0;
+
+    while (fila.length) {
+        chapas++;
+        const r = otimizarChapaMelhor(W, H, fila, kerf);
+        const escala = Math.min(400 / W, window.innerWidth / W * 0.9);
+
+        const c = document.createElement("canvas");
+        c.width = W * escala;
+        c.height = H * escala;
+
+        const ctx = c.getContext("2d");
+        let areaUsada = 0;
+        let maxXUsado = 0;
+        let maxYUsado = 0;
+
+        r.alocadas.forEach(p => {
+            ctx.fillStyle = p.cor;
+            ctx.fillRect(p.x * escala, p.y * escala, p.w * escala, p.h * escala);
+            ctx.strokeRect(p.x * escala, p.y * escala, p.w * escala, p.h * escala);
+            ctx.fillStyle = "#000";
+            ctx.font = "12px Arial";
+            ctx.fillText(`${p.w}x${p.h}`, p.x * escala + 5, p.y * escala + 15);
+            areaUsada += p.w * p.h;
+            maxXUsado = Math.max(maxXUsado, p.x + p.w);
+            maxYUsado = Math.max(maxYUsado, p.y + p.h);
+        });
+
+        const aproveitamento = ((areaUsada / (W * H)) * 100).toFixed(1);
+        const sobraW = Math.max(0, W - maxXUsado);
+        const sobraH = Math.max(0, H - maxYUsado);
+
+        if (sobraW > 0) {
+            const xIni = maxXUsado * escala;
+            const xFim = W * escala;
+            const yLinha = 12;
+            ctx.strokeStyle = "#c0392b";
+            ctx.fillStyle = "#c0392b";
+            ctx.beginPath();
+            ctx.moveTo(xIni, yLinha);
+            ctx.lineTo(xFim, yLinha);
+            ctx.stroke();
+            ctx.fillText(`${Math.round(sobraW)}`, (xIni + xFim) / 2 - 10, yLinha - 2);
+        }
+
+        if (sobraH > 0) {
+            const yIni = maxYUsado * escala;
+            const yFim = H * escala;
+            const xLinha = W * escala - 12;
+            ctx.strokeStyle = "#c0392b";
+            ctx.fillStyle = "#c0392b";
+            ctx.beginPath();
+            ctx.moveTo(xLinha, yIni);
+            ctx.lineTo(xLinha, yFim);
+            ctx.stroke();
+            ctx.fillText(`${Math.round(sobraH)}`, xLinha + 2, (yIni + yFim) / 2);
+        }
+
+        const titulo = document.createElement("div");
+        titulo.innerText = `Chapa ${chapas} - Aproveitamento: ${aproveitamento}% - Sobra: ${Math.round(sobraW)} x ${Math.round(sobraH)}`;
+        titulo.style.fontWeight = "bold";
+        titulo.style.margin = "10px";
+
+        resultado.appendChild(titulo);
+        resultado.appendChild(c);
+        fila.splice(0, fila.length, ...r.restantes);
+    }
+
+    infoBar.innerText = `Chapas: ${chapas}`;
+}
+
+async function exportarPDF(){
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: "landscape" });
+
+    document.querySelectorAll("canvas").forEach((c, i) => {
+        if (i > 0) pdf.addPage();
+        pdf.text(`Chapa ${i+1}`, 10, 10);
+        pdf.addImage(c.toDataURL(), "PNG", 10, 20, 260, 150);
+    });
+
+    pdf.save("corte.pdf");
+}
+</script>
+</body>
+</html>

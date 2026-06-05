@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Preço Médio Multi-itens (Kg e Barras)</title>
+  <style>
+    :root { --bg:#0f172a; --card:#111827; --muted:#94a3b8; --text:#e2e8f0; --accent:#22d3ee; --danger:#f87171; --border:#1f2937; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, sans-serif; background: radial-gradient(circle at top right, #1e293b, var(--bg)); color: var(--text); padding: 20px; }
+    .container { max-width: 1300px; margin: 0 auto; background: rgba(17,24,39,.95); border: 1px solid var(--border); border-radius: 14px; padding: 20px; box-shadow: 0 16px 60px rgba(0,0,0,.35); }
+    h2 { margin: 0 0 8px; }
+    .subtitle { color: var(--muted); margin: 0 0 18px; font-size: .95rem; }
+    .card { background: #0b1220; border: 1px solid #334155; border-radius: 10px; padding: 12px; margin-bottom: 14px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+    button { padding: 9px 14px; border: none; cursor: pointer; border-radius: 8px; font-weight: 700; background: var(--accent); color: #00222b; }
+    .btn-limpar { background: #6b7280; color: #fff; }
+    .btn-print { background: #f8fafc; color: #0f172a; }
+    .btn-danger { background: #b91c1c; color: #fff; }
+    .erro { color: var(--danger); min-height: 20px; margin-top: 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: .86rem; }
+    th, td { border: 1px solid #334155; padding: 8px; vertical-align: top; }
+    th { background: #111827; color: #cbd5e1; text-align: left; }
+    input, select, textarea { width: 100%; padding: 8px; border-radius: 8px; border: 1px solid #334155; background: #020617; color: var(--text); }
+    .resultado { margin-top: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; line-height: 1.6; }
+    .destaque { margin-top: 8px; padding: 10px; border-radius: 8px; background: rgba(34,211,238,.12); border: 1px solid rgba(34,211,238,.45); color: #a5f3fc; font-weight: 700; }
+    .mini { color: var(--muted); font-size: .8rem; }
+    #historico .item-historico { border: 1px solid #334155; border-radius: 8px; padding: 10px; margin: 8px 0; background: #020617; }
+    .item-historico .actions { margin-top: 8px; }
+
+    @media print {
+      :root { --text:#000; --muted:#333; }
+      body {
+        background: #fff !important;
+        color: #000 !important;
+        padding: 0 !important;
+      }
+      body, .container, .card, .resultado, .destaque, th, td, input, select {
+        box-shadow: none !important;
+      }
+      .container, .card, .resultado, .destaque, table, th, td {
+        border-color: #000 !important;
+      }
+      .container {
+        max-width: none;
+        border: none !important;
+        border-radius: 0 !important;
+        padding: 0;
+        background: #fff !important;
+      }
+      .calculo-printavel, .calculo-printavel .card, .calculo-printavel .resultado, .calculo-printavel .destaque, .calculo-printavel th, .calculo-printavel td, .calculo-printavel input, .calculo-printavel select {
+        background: #fff !important;
+        color: #000 !important;
+      }
+      .toolbar-card, #historicoCard, .actions, .btn-del, .btn-print, .mini {
+        display: none !important;
+      }
+      .card {
+        padding: 0;
+        margin: 0 0 10px;
+        border: none !important;
+      }
+      input, select {
+        border: none !important;
+        padding: 0 !important;
+        appearance: none;
+      }
+      .erro:empty, .resultado:empty {
+        display: none !important;
+      }
+      .resultado, .destaque {
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="calculo-printavel">
+      <h2>Calculadora de Preço Médio Multi-itens</h2>
+      <p class="subtitle">Adicione vários produtos. Cada linha calcula valor da entrada + IPI e gera o PM considerando estoque anterior + nova entrada.</p>
+
+      <div class="card toolbar-card">
+        <div class="actions">
+          <button id="btnAdd" type="button">+ Adicionar item</button>
+          <button id="btnCalcular" type="button">Calcular tudo</button>
+          <button id="btnSalvar" type="button">Salvar cálculo completo</button>
+          <button id="btnLimpar" class="btn-limpar" type="button">Limpar</button>
+          <button id="btnImprimir" class="btn-print" type="button">Imprimir (modo econômico)</button>
+        </div>
+        <div class="mini">Se usar unidade em <strong>kg</strong>, preencha <strong>barras recebidas</strong> (quando a entrada estiver em kg) para converter corretamente.</div>
+      </div>
+
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Código</th><th>Descrição</th><th>Estoque qtd</th><th>Estoque unit (R$)</th><th>Und estoque</th>
+              <th>Entrada qtd/peso</th><th>Valor unit. nota (R$)</th><th>Und entrada</th>
+              <th>Barras recebidas</th><th>IPI %</th><th>Valor sem IPI</th><th>Valor c/ IPI</th><th>PM final (R$/kg | R$/barra)</th><th>Ação</th>
+            </tr>
+          </thead>
+          <tbody id="itensBody"></tbody>
+        </table>
+      </div>
+
+      <div class="erro" id="erro"></div>
+      <div class="resultado" id="resultado"></div>
+    </section>
+
+    <div class="card" id="historicoCard">
+      <h3>Histórico de cálculos salvos</h3>
+      <input id="buscaHistorico" placeholder="Buscar por código, descrição ou observação..." />
+      <textarea id="obsRegistro" rows="2" placeholder="Observação para este salvamento (ex: corrigido valor da nota 123)"></textarea>
+      <div id="historico"></div>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const STORAGE_KEY = "pm_multi_itens_historico_v2";
+
+    function parseNumero(texto) {
+      if (!texto) return 0;
+      const limpo = String(texto).trim().replace(/\./g, "").replace(",", ".");
+      const n = Number(limpo);
+      return Number.isFinite(n) ? n : 0;
+    }
+    function round4(v) { return Math.round((v + Number.EPSILON) * 10000) / 10000; }
+    function moeda(v) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+    function moeda4(v) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 4, maximumFractionDigits: 4 }); }
+
+    function novaLinha(item = {}) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><input placeholder="Ex: 12345" class="codigo" value="${item.codigo || ""}"></td>
+        <td><input placeholder="Descrição do item" class="descricao" value="${item.descricao || ""}"></td>
+        <td><input placeholder="Qtd" class="est-qtd" value="${item.estQtd || ""}"></td>
+        <td><input placeholder="R$" class="est-unit" value="${item.estUnit || ""}"></td>
+        <td><select class="est-und"><option value="barras">Barras</option><option value="kgs">Kg</option></select></td>
+        <td><input placeholder="Qtd/Peso" class="ent-qtd" value="${item.entQtd || ""}"></td>
+        <td><input placeholder="R$" class="ent-unit" value="${item.entUnit || ""}"></td>
+        <td><select class="ent-und"><option value="kgs">Kg</option><option value="barras">Barras</option></select></td>
+        <td><input placeholder="Ex: 40" class="barras-recebidas" value="${item.barrasRecebidas || ""}"></td>
+        <td><input placeholder="Ex: 5" class="ipi" value="${item.ipi || ""}"></td>
+        <td class="valor-sem-ipi">${item.valorSemIpi || "-"}</td>
+        <td class="valor-com-ipi">${item.valorComIpi || "-"}</td>
+        <td class="pm-final">${item.pmFinal || "-"}</td>
+        <td><button type="button" class="btn-del btn-limpar">X</button></td>
+      `;
+      tr.querySelector(".est-und").value = item.estUnd || "barras";
+      tr.querySelector(".ent-und").value = item.entUnd || "kgs";
+      tr.querySelector(".btn-del").addEventListener("click", () => { tr.remove(); calcularTudo(); });
+      tr.querySelectorAll("input,select").forEach(el => {
+        el.addEventListener("input", calcularTudo);
+        el.addEventListener("change", calcularTudo);
+      });
+      return tr;
+    }
+
+    function normalizar(qtd, und, kgBarra) {
+      if (und === "barras") return { barras: qtd, kg: qtd * kgBarra };
+      return { kg: qtd, barras: kgBarra > 0 ? qtd / kgBarra : 0 };
+    }
+
+    function calcularTudo() {
+      const erro = $("erro"); const res = $("resultado");
+      erro.textContent = "";
+      let totalValorGeral = 0, totalKgGeral = 0, totalBarrasGeral = 0, itensValidos = 0;
+      let totalSemIpi = 0, totalIpi = 0, totalComIpi = 0;
+
+      [...$("itensBody").querySelectorAll("tr")].forEach((tr) => {
+        const estQtd = Math.max(0, parseNumero(tr.querySelector(".est-qtd").value));
+        const estUnit = Math.max(0, parseNumero(tr.querySelector(".est-unit").value));
+        const estUnd = tr.querySelector(".est-und").value;
+        const entQtd = Math.max(0, parseNumero(tr.querySelector(".ent-qtd").value));
+        const entUnit = Math.max(0, parseNumero(tr.querySelector(".ent-unit").value));
+        const entUnd = tr.querySelector(".ent-und").value;
+        const barrasRecebidas = Math.max(0, parseNumero(tr.querySelector(".barras-recebidas").value));
+        let kgBarra = 0;
+        if (entUnd === "kgs" && entQtd > 0 && barrasRecebidas > 0) kgBarra = entQtd / barrasRecebidas;
+        else if (entUnd === "barras" && entQtd > 0 && barrasRecebidas > 0) kgBarra = barrasRecebidas / entQtd;
+        const ipi = Math.max(0, parseNumero(tr.querySelector(".ipi").value));
+
+        if (!estQtd && !entQtd) {
+          tr.querySelector(".valor-sem-ipi").textContent = "-";
+          tr.querySelector(".valor-com-ipi").textContent = "-";
+          tr.querySelector(".pm-final").textContent = "-";
+          return;
+        }
+        if ((estQtd || entQtd) && kgBarra <= 0) {
+          tr.querySelector(".valor-sem-ipi").textContent = "barras inválido";
+          tr.querySelector(".valor-com-ipi").textContent = "-";
+          tr.querySelector(".pm-final").textContent = "-";
+          erro.textContent = "Preencha 'barras recebidas' para calcular a conversão entre kg e barras.";
+          return;
+        }
+
+        const estNorm = normalizar(estQtd, estUnd, kgBarra);
+        const entNorm = normalizar(entQtd, entUnd, kgBarra);
+        const valorEstoque = estQtd * estUnit;
+        const valorEntradaSemIpi = entQtd * entUnit;
+        const valorIpi = valorEntradaSemIpi * (ipi / 100);
+        const valorEntradaComIpi = valorEntradaSemIpi + valorIpi;
+
+        const totalKg = estNorm.kg + entNorm.kg;
+        const totalBarras = estNorm.barras + entNorm.barras;
+        const totalValor = valorEstoque + valorEntradaComIpi;
+        const pmKg = totalKg > 0 ? totalValor / totalKg : 0;
+        const pmBarra = totalBarras > 0 ? totalValor / totalBarras : 0;
+
+        tr.querySelector(".valor-sem-ipi").textContent = `${moeda(round4(valorEntradaSemIpi))}`;
+        tr.querySelector(".valor-com-ipi").textContent = `${moeda(round4(valorEntradaComIpi))}`;
+        tr.querySelector(".pm-final").textContent = `${moeda4(round4(pmKg))}/kg | ${moeda4(round4(pmBarra))}/barra`;
+
+        totalSemIpi += valorEntradaSemIpi; totalIpi += valorIpi; totalComIpi += valorEntradaComIpi;
+        totalValorGeral += totalValor; totalKgGeral += totalKg; totalBarrasGeral += totalBarras; itensValidos++;
+      });
+
+      const pmGeralKg = totalKgGeral > 0 ? totalValorGeral / totalKgGeral : 0;
+      const pmGeralBarra = totalBarrasGeral > 0 ? totalValorGeral / totalBarrasGeral : 0;
+      res.innerHTML = `
+        <strong>Resumo geral (${itensValidos} item(ns) com cálculo):</strong><br>
+        Total unitário (soma das entradas sem IPI): ${moeda(round4(totalSemIpi))}<br>
+        Total de IPI: ${moeda(round4(totalIpi))}<br>
+        <strong>Valor final da nota (entradas com IPI): ${moeda(round4(totalComIpi))}</strong><br>
+        Valor total combinado (estoque + entradas com IPI): ${moeda(round4(totalValorGeral))}<br>
+        Quantidade total: ${round4(totalKgGeral).toLocaleString("pt-BR")} kg | ${round4(totalBarrasGeral).toLocaleString("pt-BR")} barras
+        <div class="destaque">PM geral: ${moeda4(round4(pmGeralKg))}/kg | ${moeda4(round4(pmGeralBarra))}/barra</div>
+      `;
+    }
+
+    function coletarDadosTela() {
+      return [...$("itensBody").querySelectorAll("tr")].map((tr) => ({
+        codigo: tr.querySelector(".codigo").value.trim(), descricao: tr.querySelector(".descricao").value.trim(),
+        estQtd: tr.querySelector(".est-qtd").value, estUnit: tr.querySelector(".est-unit").value, estUnd: tr.querySelector(".est-und").value,
+        entQtd: tr.querySelector(".ent-qtd").value, entUnit: tr.querySelector(".ent-unit").value, entUnd: tr.querySelector(".ent-und").value,
+        barrasRecebidas: tr.querySelector(".barras-recebidas").value, ipi: tr.querySelector(".ipi").value,
+        valorSemIpi: tr.querySelector(".valor-sem-ipi").textContent, valorComIpi: tr.querySelector(".valor-com-ipi").textContent,
+        pmFinal: tr.querySelector(".pm-final").textContent
+      }));
+    }
+
+    function obterHistorico() {
+      try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; }
+    }
+
+    function salvarHistorico() {
+      calcularTudo();
+      const itens = coletarDadosTela().filter(i => i.codigo || i.descricao || parseNumero(i.estQtd) || parseNumero(i.entQtd));
+      if (!itens.length) return;
+
+      const historico = obterHistorico();
+      historico.unshift({
+        id: Date.now(),
+        dataIso: new Date().toISOString(),
+        data: new Date().toLocaleString("pt-BR"),
+        observacao: $("obsRegistro").value.trim(),
+        itens,
+        resumoHtml: $("resultado").innerHTML,
+        erroTela: $("erro").textContent
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(historico.slice(0, 200)));
+      $("obsRegistro").value = "";
+      renderHistorico();
+    }
+
+    function carregarRegistro(id) {
+      const registro = obterHistorico().find(r => r.id === id);
+      if (!registro) return;
+      $("itensBody").innerHTML = "";
+      registro.itens.forEach(item => $("itensBody").appendChild(novaLinha(item)));
+      if (!registro.itens.length) $("itensBody").appendChild(novaLinha());
+      $("erro").textContent = registro.erroTela || "";
+      $("resultado").innerHTML = registro.resumoHtml || "";
+      calcularTudo();
+    }
+
+    function excluirRegistro(id) {
+      const novo = obterHistorico().filter(r => r.id !== id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(novo));
+      renderHistorico();
+    }
+
+    function renderHistorico() {
+      const termo = $("buscaHistorico").value.toLowerCase().trim();
+      const filtrado = obterHistorico().filter(reg => {
+        const txt = `${reg.observacao || ""} ${reg.itens.map(i => `${i.codigo} ${i.descricao}`).join(" ")}`.toLowerCase();
+        return !termo || txt.includes(termo);
+      });
+
+      $("historico").innerHTML = filtrado.map(reg => `
+        <div class="item-historico">
+          <strong>Salvo em:</strong> ${reg.data}<br>
+          ${reg.observacao ? `<strong>Obs:</strong> ${reg.observacao}<br>` : ""}
+          <strong>Itens:</strong><br>${reg.itens.map(i => `${i.codigo || "(sem código)"} - ${i.descricao || "(sem descrição)"} | Qtd est: ${i.estQtd || 0} | Und est: ${i.estUnd} | Entrada: ${i.entQtd || 0} ${i.entUnd} | PM: ${i.pmFinal}`).join("<br>")}
+          <div class="actions">
+            <button type="button" onclick="carregarRegistro(${reg.id})">Carregar p/ corrigir</button>
+            <button type="button" class="btn-danger" onclick="excluirRegistro(${reg.id})">Excluir</button>
+          </div>
+        </div>
+      `).join("") || "<p class='mini'>Nenhum cálculo salvo.</p>";
+    }
+
+    function limparTudo() {
+      $("itensBody").innerHTML = "";
+      $("erro").textContent = "";
+      $("resultado").innerHTML = "";
+      $("itensBody").appendChild(novaLinha());
+    }
+
+    $("btnAdd").addEventListener("click", () => $("itensBody").appendChild(novaLinha()));
+    $("btnCalcular").addEventListener("click", calcularTudo);
+    $("btnSalvar").addEventListener("click", salvarHistorico);
+    $("btnLimpar").addEventListener("click", limparTudo);
+    $("btnImprimir").addEventListener("click", () => window.print());
+    $("buscaHistorico").addEventListener("input", renderHistorico);
+
+    $("itensBody").appendChild(novaLinha());
+    renderHistorico();
+  </script>
+</body>
+</html>

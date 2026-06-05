@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<title>Calculadora de Chapas</title>
+
+<style>
+    :root {
+        --bg:#0f172a;
+        --card:#111827;
+        --muted:#94a3b8;
+        --text:#e2e8f0;
+        --accent:#22d3ee;
+        --border:#1f2937;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: radial-gradient(circle at top right, #1e293b, var(--bg));
+        color: var(--text);
+        padding: 20px;
+    }
+
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: rgba(17,24,39,.95);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 20px;
+        box-shadow: 0 16px 60px rgba(0,0,0,.35);
+    }
+
+    h2 { margin-top: 0; }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #0b1220;
+        border: 1px solid var(--border);
+    }
+
+    th, td {
+        padding: 8px;
+        border: 1px solid #334155;
+        text-align: center;
+        font-size: .9rem;
+    }
+
+    th { color: #cbd5e1; }
+
+    input {
+        width: 80px;
+        padding: 6px;
+        border-radius: 8px;
+        border: 1px solid #334155;
+        background: #0b1220;
+        color: var(--text);
+    }
+
+    button {
+        margin-top: 15px;
+        padding: 10px 20px;
+        background: var(--accent);
+        color: #00222b;
+        border: none;
+        cursor: pointer;
+        margin-right: 10px;
+        border-radius: 8px;
+        font-weight: 700;
+    }
+
+    .btn-limpar {
+        background: #6b7280;
+        color: #fff;
+    }
+
+    .total {
+        margin-top: 15px;
+        font-size: 16px;
+        line-height: 1.6;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 12px;
+    }
+
+    .table-wrap { overflow-x: auto; }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <h2>Calculadora de Peso de Chapas</h2>
+
+    <div class="table-wrap">
+        <table>
+            <tr>
+                <th>Larg (mm)</th>
+                <th>Comp (mm)</th>
+                <th>Esp (mm)</th>
+                <th>Qtd</th>
+
+                <th>Unit (7.85)</th>
+                <th>Total (7.85)</th>
+
+                <th>Unit (8.00)</th>
+                <th>Total (8.00)</th>
+            </tr>
+
+            <tbody id="linhas"></tbody>
+        </table>
+    </div>
+
+    <button onclick="calcular()">Calcular</button>
+    <button class="btn-limpar" onclick="limparMedidas()">Limpar medidas</button>
+
+    <div class="total" id="totalGeral"></div>
+</div>
+
+<script>
+const densidade1 = 0.00000785;
+const densidade2 = 0.000008;
+
+function criarLinhas(qtd = 7) {
+    const tbody = document.getElementById("linhas");
+
+    for (let i = 0; i < qtd; i++) {
+        const tr = document.createElement("tr");
+
+        tr.innerHTML = `
+            <td><input type="number" class="larg"></td>
+            <td><input type="number" class="comp"></td>
+            <td><input type="number" class="esp"></td>
+            <td><input type="number" class="qtd" value="1"></td>
+
+            <td class="u785">-</td>
+            <td class="t785">-</td>
+
+            <td class="u800">-</td>
+            <td class="t800">-</td>
+        `;
+
+        tbody.appendChild(tr);
+    }
+}
+
+function calcular() {
+    let totalGeral785 = 0;
+    let totalGeral800 = 0;
+
+    const linhas = document.querySelectorAll("#linhas tr");
+
+    linhas.forEach(linha => {
+
+        const larg = parseFloat(linha.querySelector(".larg").value) || 0;
+        const comp = parseFloat(linha.querySelector(".comp").value) || 0;
+        const esp = parseFloat(linha.querySelector(".esp").value) || 0;
+        const qtd = parseFloat(linha.querySelector(".qtd").value) || 0;
+
+        const unit785 = (larg * comp * esp * densidade1);
+        const total785 = Math.ceil(unit785 * qtd);
+
+        const unit800 = (larg * comp * esp * densidade2);
+        const total800 = Math.ceil(unit800 * qtd);
+
+        linha.querySelector(".u785").innerText = unit785.toFixed(2);
+        linha.querySelector(".t785").innerText = total785;
+
+        linha.querySelector(".u800").innerText = unit800.toFixed(2);
+        linha.querySelector(".t800").innerText = total800;
+
+        totalGeral785 += total785;
+        totalGeral800 += total800;
+    });
+
+    document.getElementById("totalGeral").innerHTML =
+        `Total Geral (7.85): ${totalGeral785} kg <br>
+         Total Geral (8.00): ${totalGeral800} kg`;
+}
+
+function limparMedidas() {
+    const linhas = document.querySelectorAll("#linhas tr");
+
+    linhas.forEach(linha => {
+        linha.querySelector(".larg").value = "";
+        linha.querySelector(".comp").value = "";
+        linha.querySelector(".esp").value = "";
+        linha.querySelector(".qtd").value = 1;
+
+        linha.querySelector(".u785").innerText = "-";
+        linha.querySelector(".t785").innerText = "-";
+        linha.querySelector(".u800").innerText = "-";
+        linha.querySelector(".t800").innerText = "-";
+    });
+
+    document.getElementById("totalGeral").innerHTML = "";
+}
+
+criarLinhas();
+</script>
+
+</body>
+</html>

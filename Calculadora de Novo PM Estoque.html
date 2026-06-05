@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calculadora de Novo Preço Médio (Múltiplos Itens)</title>
+  <style>
+    :root { --bg:#0f172a;--card:#111827;--muted:#94a3b8;--text:#e2e8f0;--accent:#22d3ee;--accent-2:#34d399;--danger:#f87171;--border:#1f2937; }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(circle at top right,#1e293b,var(--bg));color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .app{width:min(1120px,100%);background:rgba(17,24,39,.92);border:1px solid var(--border);border-radius:18px;box-shadow:0 16px 60px rgba(0,0,0,.35);overflow:hidden}
+    .header{padding:24px;border-bottom:1px solid var(--border);background:linear-gradient(90deg,rgba(34,211,238,.1),rgba(52,211,153,.08))}
+    .header h1{margin:0 0 6px;font-size:clamp(1.2rem,2.2vw,1.8rem)} .header p{margin:0;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:20px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px}
+    .card h2{margin:0 0 12px;font-size:1rem;color:#cbd5e1}
+    label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:6px}
+    input,textarea{width:100%;padding:12px;border-radius:10px;border:1px solid #334155;background:#0b1220;color:var(--text);margin-bottom:12px;outline:none;transition:.2s border}
+    input:focus,textarea:focus{border-color:var(--accent)}
+    textarea{min-height:210px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+    .result{background:#0b1220;border:1px dashed #334155;border-radius:10px;padding:10px;font-size:.95rem;color:#cbd5e1;margin-bottom:10px}
+    .totals{border-top:1px solid var(--border);padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    .big{font-size:1.3rem;font-weight:700;color:var(--accent-2)} .error{color:var(--danger);font-size:.9rem;min-height:1.2rem}
+    .small{font-size:.86rem;color:var(--muted);margin:.3rem 0 0}
+    table{width:100%;border-collapse:collapse;font-size:.9rem}
+    th,td{padding:8px;border-bottom:1px solid #243244;text-align:left}
+    th{color:#9fb4c9;font-weight:600}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+    @media (max-width:760px){.grid,.totals{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<main class="app">
+  <section class="header">
+    <h1>Calculadora de Novo PM do produto 894 (múltiplas transferências)</h1>
+    <p>Informe o lote atual do 894 e cole vários itens de transferência de uma vez.</p>
+  </section>
+
+  <section class="grid">
+    <article class="card">
+      <h2>Base atual do produto 894</h2>
+      <label for="pesoBase">Peso atual (kg)</label>
+      <input id="pesoBase" type="text" inputmode="decimal" placeholder="Ex.: 5564,58" />
+      <label for="pmBase">PM atual (R$)</label>
+      <input id="pmBase" type="text" inputmode="decimal" placeholder="Ex.: 5,04" />
+      <div class="result">Valor atual: <strong id="valorBase">R$ 0,00</strong></div>
+
+      <label for="estoqueAtual894">Estoque atual do 894 (kg)</label>
+      <input id="estoqueAtual894" type="text" inputmode="decimal" placeholder="Ex.: 10000" />
+      <div class="result">Estoque futuro 894 (atual + entradas): <strong id="estoqueFuturo894">0,000 kg</strong></div>
+    </article>
+
+    <article class="card">
+      <h2>Itens para transferir para o 894</h2>
+      <label for="itens">Uma linha por item: <span class="mono">código; peso; pm; estoque_atual</span></label>
+      <textarea id="itens" placeholder="Exemplo:
+36.001;675;5,04
+203.001;1428;4,98
+1125.001;720;5,12;9800"></textarea>
+      <div class="result">Total dos itens: <strong id="valorItens">R$ 0,00</strong></div>
+      <div class="result">Peso total itens: <strong id="pesoItens">0,000 kg</strong></div>
+      <p class="small">Separadores aceitos: <strong>;</strong> ou <strong>|</strong> (ou espaço). Campo de estoque atual é opcional na 4ª coluna.</p>
+    </article>
+  </section>
+
+  <section class="totals">
+    <article class="card">
+      <h2>Resultado consolidado</h2>
+      <p>Novo peso total: <span class="big" id="pesoTotal">0,000 kg</span></p>
+      <p>Novo PM: <span class="big" id="novoPm">R$ 0,00</span></p>
+      <p class="small">PM exato (antes do arredondamento): <strong id="pmExato">0,000000</strong></p>
+      <p class="error" id="erro"></p>
+    </article>
+
+    <article class="card">
+      <h2>Itens processados</h2>
+      <table>
+        <thead>
+        <tr><th>Código</th><th>Peso (kg)</th><th>PM</th><th>Total</th><th>Estoque atual</th><th>Estoque após transf.</th></tr>
+        </thead>
+        <tbody id="tabelaItens"></tbody>
+      </table>
+    </article>
+  </section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const fmtMoeda = (v) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const fmtKg = (v) => v.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + " kg";
+  const roundNormal2 = (v) => Math.round((v + Number.EPSILON) * 100) / 100;
+  const roundCima2 = (v) => Math.ceil((v - Number.EPSILON) * 100) / 100;
+
+  function parseNumero(texto) {
+    if (!texto) return 0;
+    const limpo = String(texto).trim().replace(/\./g, "").replace(",", ".");
+    const num = Number(limpo);
+    return Number.isFinite(num) && num >= 0 ? num : 0;
+  }
+
+  function parseItens(raw) {
+    return String(raw)
+      .split(/\n+/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((linha, idx) => {
+        const separador = linha.includes(";") ? ";" : (linha.includes("|") ? "|" : null);
+        const partes = (separador ? linha.split(separador) : linha.split(/\s+/)).map((p) => p.trim());
+        const codigo = partes[0] || `item_${idx + 1}`;
+        const peso = parseNumero(partes[1]);
+        const pm = parseNumero(partes[2]);
+        const estoqueAtual = parseNumero(partes[3]);
+        const estoqueAposTransferencia = estoqueAtual - peso;
+        return { codigo, peso, pm, estoqueAtual, estoqueAposTransferencia, total: peso * pm, linha: idx + 1 };
+      });
+  }
+
+  function renderTabela(itens) {
+    const tbody = $("tabelaItens");
+    tbody.innerHTML = "";
+    itens.forEach((item) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${item.codigo}</td><td>${item.peso.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td><td>${fmtMoeda(roundNormal2(item.pm))}</td><td>${fmtMoeda(roundNormal2(item.total))}</td><td>${fmtKg(item.estoqueAtual)}</td><td>${fmtKg(item.estoqueAposTransferencia)}</td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function calcular() {
+    const pesoBase = parseNumero($("pesoBase").value);
+    const pmBase = parseNumero($("pmBase").value);
+    const estoqueAtual894 = parseNumero($("estoqueAtual894").value);
+    const itens = parseItens($("itens").value);
+
+    const valorBase = pesoBase * pmBase;
+    const pesoItens = itens.reduce((acc, i) => acc + i.peso, 0);
+    const valorItens = itens.reduce((acc, i) => acc + i.total, 0);
+
+    const somaPesos = pesoBase + pesoItens;
+    const somaTotais = valorBase + valorItens;
+
+    $("valorBase").textContent = fmtMoeda(roundNormal2(valorBase));
+    $("valorItens").textContent = fmtMoeda(roundNormal2(valorItens));
+    $("pesoItens").textContent = fmtKg(pesoItens);
+    $("pesoTotal").textContent = fmtKg(somaPesos);
+    $("estoqueFuturo894").textContent = fmtKg(estoqueAtual894 + pesoItens);
+
+    renderTabela(itens);
+
+    if (somaPesos <= 0) {
+      $("novoPm").textContent = "R$ 0,00";
+      $("pmExato").textContent = "0,000000";
+      $("erro").textContent = "Informe o peso atual e/ou itens com peso maior que zero para calcular o novo PM.";
+      return;
+    }
+
+    const pmExato = somaTotais / somaPesos;
+    const novoPm = roundCima2(pmExato);
+
+    $("novoPm").textContent = fmtMoeda(novoPm);
+    $("pmExato").textContent = pmExato.toLocaleString("pt-BR", { minimumFractionDigits: 6, maximumFractionDigits: 6 });
+    $("erro").textContent = "";
+  }
+
+  ["pesoBase", "pmBase", "estoqueAtual894", "itens"].forEach((id) => {
+    $(id).addEventListener("input", calcular);
+  });
+  calcular();
+</script>
+</body>
+</html>
